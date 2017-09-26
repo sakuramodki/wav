@@ -3,12 +3,13 @@
 #include <iostream>
 #include <fstream>
 #include "WavShow.hpp"
+#include "WavOutput.hpp"
 #include "structs.hpp"
 
 class Wav {
 private:
     WavShow show;
-	WavOutput output;
+    WavOutput output;
     std::ifstream fin;
 
     RiffHeader riff;
