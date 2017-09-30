@@ -1,4 +1,5 @@
 #include "Wav.hpp"
+#include <sstream>
 #include <cmath>
 
 signed int Wav::convertToInt (char* val, int size) {
@@ -43,8 +44,8 @@ void Wav::open(std::string fname) {
     this->fin.read( (char *)&wavHeader, header.size );
     this->fin.read( (char *)&header, sizeof( DataHeader ) );
 
-    this->output.setWavHeader(wavHeader);
-    /*
+    /**
+    // output debug infomations
     std::string str;
     std::cout << "file type:" << getString(riff.riff, str) << std::endl;
     std::cout << "file size : " << riff.fileSize << std::endl;
@@ -53,28 +54,81 @@ void Wav::open(std::string fname) {
     std::cout << "format Id : " << wavHeader.formatId << std::endl;
     std::cout << "channels : " << wavHeader.channel << std::endl;
     std::cout << "samplingRatio : " << wavHeader.samplingRatio << std::endl;
-    */
+    **/
 
-    int blockSizePerChannel =  wavHeader.blockSize / wavHeader.channel;
 
     int values[wavHeader.channel];
-    show.init();
 
-    const double testFreq = 44100 / 1024 * 500;
+    int splitSize = 16;
+    int effected[splitSize][wavHeader.channel];
+
+    // init multiband filter
+    const int maxFreq = 20000;
+    const int minFreq = 40;
+    for(int band = 0; band < splitSize; ++band ) {
+        FilterPtr filter = FilterPtr(new Filter);
+
+        filter->setSamplingRatio(wavHeader.samplingRatio);
+        double cutoff =  minFreq + (maxFreq - minFreq) * pow(band,2) / pow(splitSize,2);
+        std::cout << "bakd " << band << " = "<< cutoff << " Hz" << std::endl;
+        filter->setCutoff(cutoff);
+
+        this->filters.push_back(filter);
+    }
+
+    // init output
+    for(int band = 0; band < splitSize; ++band ) {
+        this->output.push_back(WavOutputPtr(new WavOutput));
+    }
+
+    this->buf.init(wavHeader.channel, 1024);
+    int blockSizePerChannel =  wavHeader.blockSize / wavHeader.channel;
+    int cnt = 0;
+    double totalTime = 0.0;
     for (int i = 0 ; i < 44100 * 10 ; ++i) {
+
+        // load data
         for (int ch = 0 ; ch < wavHeader.channel; ++ch) {
             unsigned char tmp[blockSizePerChannel];
             for (int j = 0; j < blockSizePerChannel ; j++) {
                 this->fin.read( (char *)&tmp[j], 1);
             }
             values[ch] = convertToInt((char *)tmp, blockSizePerChannel);
-            //values[ch] = sin(i * testFreq * M_PI / 44100) * SHRT_MAX/2;
         }
-        //show.onLoad(values, wavHeader.channel, wavHeader);
-        output.pushData(values, wavHeader.channel, wavHeader);
+
+        // main calcs.
+        clock_t start = clock();
+        this->buf.pushData(values, wavHeader.channel);
+        for(int band = 0; band < splitSize; ++band ) {
+            for (int ch = 0 ; ch < wavHeader.channel; ++ch) {
+                effected[band][ch] = this->filters[band]->getFiltered(this->buf, ch);
+            }
+        }
+        for (int ch = 0 ; ch < wavHeader.channel; ++ch) {
+            double sum = 0.0;
+            for(int band = 0; band < splitSize; ++band ) {
+                    effected[band][ch] -= sum;
+                    sum += effected[band][ch];
+            }
+        }
+        totalTime += clock() - start;
+        cnt++;
+
+        for(int band = 0; band < splitSize; ++band ) {
+            this->output[band]->pushData(effected[band], wavHeader.channel);
+        }
     }
 
-    output.save("output.wav");
+    totalTime /= CLOCKS_PER_SEC;
+    std::cout << "sum " << totalTime << std::endl;
+    std::cout << "ave " << totalTime / cnt<< std::endl;
+    std::cout << "aveSample " << totalTime / cnt * wavHeader.samplingRatio << std::endl;
+
+    for(int band = 0; band < splitSize; ++band ) {
+        std::ostringstream fname;
+        fname << "output-band_" << band << ".wav";
+        this->output[band]->save(fname.str(), wavHeader);
+    }
 }
 
 WavHeader& Wav::getWavHeader() {
