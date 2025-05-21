@@ -4,6 +4,7 @@
 #include <fstream>
 #include "structs.hpp"
 #include "Filter.hpp"
+#include "WavOnLoadInterface.hpp"
 #include "WavBuffer.hpp"
 
 class Wav {
@@ -19,6 +20,7 @@ private:
     typedef boost::shared_ptr<WavOutput> WavOutputPtr;
     std::vector<WavOutputPtr> output;
     WavBuffer buf;
+    WavOnLoadInterface* processor = nullptr;
 
 private:
     signed int convertToInt (char* val, int size);
@@ -26,6 +28,7 @@ private:
 public:
     void open(std::string fname);
     WavHeader& getWavHeader();
+    void setProcessor(WavOnLoadInterface* proc);
 };
 
 

@@ -39,6 +39,11 @@ std::string& getString(T& val, std::string& str) {
 void Wav::open(std::string fname) {
     this->fin.open(fname, std::ios::in | std::ios::binary);
 
+    if (!this->fin.is_open()) {
+        std::cerr << "Error: Could not open WAV file: " << fname << std::endl;
+        return; // Exit the function if file opening failed
+    }
+
     this->fin.read( (char *)&riff, sizeof( RiffHeader ) );
     this->fin.read( (char *)&header, sizeof( DataHeader ) );
     this->fin.read( (char *)&wavHeader, header.size );
@@ -96,6 +101,11 @@ void Wav::open(std::string fname) {
             values[ch] = convertToInt((char *)tmp, blockSizePerChannel);
         }
 
+        // Call the onLoad method of the registered processor
+        if (this->processor) {
+            this->processor->onLoad(values, wavHeader.channel, wavHeader);
+        }
+
         // main calcs.
         clock_t start = clock();
         this->buf.pushData(values, wavHeader.channel);
@@ -129,6 +139,10 @@ void Wav::open(std::string fname) {
         fname << "output-band_" << band << ".wav";
         this->output[band]->save(fname.str(), wavHeader);
     }
+}
+
+void Wav::setProcessor(WavOnLoadInterface* proc) {
+    this->processor = proc;
 }
 
 WavHeader& Wav::getWavHeader() {
